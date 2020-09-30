@@ -366,7 +366,7 @@ class SiteOccupancyAnalyzer:
         # Initial structure.
         structure = diffusion_analyzer.structure
 
-        # Drifted corrected ionic trajectories
+        # Drift corrected atom trajectories
         for s in diffusion_analyzer.get_drift_corrected_structures():
             trajectories.append(s.frac_coords)
 
