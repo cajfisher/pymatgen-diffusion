@@ -2,6 +2,7 @@
 # Copyright (c) Materials Virtual Lab.
 # Distributed under the terms of the BSD License.
 
+import itertools
 import numpy as np
 from collections import Counter
 from scipy.spatial.distance import squareform
@@ -34,20 +35,20 @@ class ProbabilityDensityAnalysis:
         """
         Initialization.
         Args:
-            structure (Structure): crystal structure
-            trajectories (numpy array): ionic trajectories of the structure
-                from MD simulations. It should be (1) stored as 3-D array [
-                Ntimesteps, Nions, 3] where 3 refers to a,b,c components;
+            structure (Structure): Crystal structure.
+            trajectories (numpy array): Atom trajectories in the structure
+                from MD simulations: (1) stored as a 3-D array [
+                Ntimesteps, Nions, 3] where 3 refers to a,b,c components and
                 (2) in fractional coordinates.
-            interval(float): the interval between two nearest grid points
-                (in Angstrom)
-            species(list of str): list of species that are of interest
+            interval(float): Interval between two nearest grid points
+                (in angstroms).
+            species(list of str): List of species of interest.
         """
 
         # initial settings
         trajectories = np.array(trajectories)
 
-        # All fractional coordinates are between 0 and 1.
+        # Ensure all fractional coordinates are between 0 and 1.
         trajectories -= np.floor(trajectories)
         assert np.all(trajectories >= 0) and np.all(trajectories <= 1)
 
@@ -68,7 +69,8 @@ class ProbabilityDensityAnalysis:
         bgrid = rb[:, None] * np.array([0, 1, 0])[None, :]
         cgrid = rc[:, None] * np.array([0, 0, 1])[None, :]
 
-        grid = agrid[:, None, None] + bgrid[None, :, None] + cgrid[None, None, :]
+        grid = agrid[:, None, None] + bgrid[None, :, None] + cgrid[None, None,
+                                                             :]
 
         # Calculate time-averaged probability density function distribution Pr
         count = Counter()
@@ -86,25 +88,30 @@ class ProbabilityDensityAnalysis:
                 for i in range(3):
                     next_i[i] = corner_i[i] + 1 if corner_i[i] < lens[i] - 1 else 0
 
-                agrid = np.array([corner_i[0], next_i[0]])[:, None] * np.array([1, 0, 0])[None, :]
-                bgrid = np.array([corner_i[1], next_i[1]])[:, None] * np.array([0, 1, 0])[None, :]
-                cgrid = np.array([corner_i[2], next_i[2]])[:, None] * np.array([0, 0, 1])[None, :]
+                agrid = np.array([corner_i[0], next_i[0]])[:, None] * \
+                        np.array([1, 0, 0])[None, :]
+                bgrid = np.array([corner_i[1], next_i[1]])[:, None] * \
+                        np.array([0, 1, 0])[None, :]
+                cgrid = np.array([corner_i[2], next_i[2]])[:, None] * \
+                        np.array([0, 0, 1])[None, :]
 
-                grid_indices = agrid[:, None, None] + bgrid[None, :, None] + cgrid[None, None, :]
+                grid_indices = agrid[:, None, None] + bgrid[None, :, None] + \
+                               cgrid[None, None, :]
                 grid_indices = grid_indices.reshape(8, 3)
 
                 mini_grid = [grid[indx[0], indx[1], indx[2]] for indx in
                              grid_indices]
                 dist_matrix = lattice.get_all_distances(mini_grid, fcoord)
                 indx = \
-                    np.where(dist_matrix == np.min(dist_matrix, axis=0)[None, :])[
-                        0][0]
+                np.where(dist_matrix == np.min(dist_matrix, axis=0)[None, :])[
+                    0][0]
 
                 # 3-index label mapping to single index
-                min_indx = (grid_indices[indx][0] * len(rb) * len(rc) +
-                            grid_indices[indx][1] * len(rc) + grid_indices[indx][2])
+                min_indx = grid_indices[indx][0] * len(rb) * len(rc) + \
+                           grid_indices[indx][1] * len(rc) + grid_indices[indx][
+                               2]
 
-                # make sure the index does not go out of bound.
+                # Make sure the index does not go out of bounds.
                 assert 0 <= min_indx < ngrid
 
                 count.update([min_indx])
@@ -147,24 +154,25 @@ class ProbabilityDensityAnalysis:
         return ProbabilityDensityAnalysis(structure, trajectories,
                                           interval=interval, species=species)
 
+
     def generate_stable_sites(self, p_ratio=0.25, d_cutoff=1.0):
         """
         Obtain a set of low-energy sites from probability density function with
         given probability threshold 'p_ratio'. The set of grid points with
         probability density higher than the threshold will further be clustered
-        using hierachical clustering method, with no two clusters closer than the
+        using the hierachical clustering method, with no two clusters closer than the
         given distance cutoff. Note that the low-energy sites may converge more
-        slowly in fast conductors (more shallow energy landscape) than in the slow
+        slowly in fast conductors (shallower energy landscape) than in poor
         conductors.
 
         Args:
             p_ratio (float): Probability threshold above which a grid point is
-                considered as a low-energy site.
+                considered a low-energy site.
             d_cutoff (float): Distance cutoff used in hierachical clustering.
 
         Notes:
             The set of stable sites is stored in the `stable_sites` attribute
-            as a Nx3 numpy array.
+            as an Nx3 numpy array. 
         """
 
         # Set of grid points with high probability density.
@@ -173,7 +181,7 @@ class ProbabilityDensityAnalysis:
         lattice = self.structure.lattice
 
         for (x, y, z) in zip(indices[0], indices[1], indices[2]):
-            grid_fcoords.append([x / self.lens[0], y / self.lens[1], z / self.lens[2]])
+            grid_fcoords.append([x/self.lens[0], y/self.lens[1], z/self.lens[2]])
 
         grid_fcoords = np.array(grid_fcoords)
         dist_matrix = np.array(lattice.get_all_distances(grid_fcoords,
@@ -194,7 +202,7 @@ class ProbabilityDensityAnalysis:
 
         if nc < nions:
             raise ValueError("The number of clusters ({}) is smaller than that of "
-                             "mobile ions ({})! Please try to decrease either "
+                             "the mobile ions ({})! Please try to decrease either "
                              "'p_ratio' or 'd_cut' values!".format(nc, nions))
 
         # For each low-energy site (cluster centroid), its coordinates are obtained
@@ -208,7 +216,7 @@ class ProbabilityDensityAnalysis:
                 stable_sites.append(grid_fcoords[indices[0]])
                 continue
 
-            # Consider periodic boundary condition
+            # Consider periodic boundary conditions
             members = grid_fcoords[indices] - grid_fcoords[indices[0]]
             members = np.where(members > 0.5, members - 1.0, members)
             members = np.where(members < -0.5, members + 1.0, members)
@@ -220,8 +228,8 @@ class ProbabilityDensityAnalysis:
 
     def get_full_structure(self):
         """
-        Generate the structure with the low-energy sites included. In the end, a
-        pymatgen Structure object will be returned.
+        Generate the structure with the low-energy sites included. A
+        pymatgen Structure object is returned.
         """
 
         full_structure = self.structure.copy()
@@ -230,15 +238,17 @@ class ProbabilityDensityAnalysis:
 
         return full_structure
 
+
     def to_chgcar(self, filename="CHGCAR.vasp"):
         """
-        Save the probability density distribution in the format of CHGCAR,
-        which can be visualized by VESTA.
+        Save the probability density distribution in CHGCAR format,
+        which can be visualized using VESTA.
         """
 
         count = 1
         VolinAu = self.structure.lattice.volume / 0.5291772083 ** 3
-        symbols = self.structure.symbol_set
+        syms = [site.specie.symbol for site in self.structure]
+        symbols = [a[0] for a in itertools.groupby(syms)]
         natoms = [str(int(self.structure.composition[symbol]))
                   for symbol in symbols]
         init_fcoords = np.array(self.structure.frac_coords)
@@ -356,7 +366,7 @@ class SiteOccupancyAnalyzer:
         # Initial structure.
         structure = diffusion_analyzer.structure
 
-        # Drifted corrected ionic trajectories
+        # Drift corrected atom trajectories
         for s in diffusion_analyzer.get_drift_corrected_structures():
             trajectories.append(s.frac_coords)
 
